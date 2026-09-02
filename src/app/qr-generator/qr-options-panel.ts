@@ -114,6 +114,12 @@ export class QrOptionsPanel extends LitElement {
       grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
     }
 
+    /* All 40 versions plus auto overflow the viewport, so cap the dropdown
+       and let its own scroll container take over. */
+    .version-select::part(base) {
+      max-height: 320px;
+    }
+
     .field {
       display: flex;
       flex-direction: column;
@@ -440,6 +446,7 @@ export class QrOptionsPanel extends LitElement {
             )}
           </igc-select>
           <igc-select
+            class="version-select"
             label="Version"
             .value=${String(version)}
             @igcChange=${(event: CustomEvent<IgcSelectItemComponent>) =>
