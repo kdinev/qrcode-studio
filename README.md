@@ -1,4 +1,4 @@
-# qrcode-sample
+# QrCode Studio
 
 This project was generated with [Ignite UI CLI](https://github.com/IgniteUI/igniteui-cli) version 15.6.1.
 
