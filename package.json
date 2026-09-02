@@ -1,0 +1,42 @@
+{
+  "name": "qrcode-sample",
+  "version": "0.0.0",
+  "private": true,
+  "description": "WebComponents project for Ignite UI CLI",
+  "type": "module",
+  "scripts": {
+    "start": "vite --open",
+    "build": "vite build",
+    "start:build": "vite preview --open",
+    "lint": "eslint",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@vaadin/router": "^2.0.0",
+    "@igniteui/material-icons-extended": "^3.0.2",
+    "igniteui-dockmanager": "^2.1.1",
+    "igniteui-webcomponents": "~7.3.0",
+    "igniteui-webcomponents-charts": "~7.1.0",
+    "igniteui-webcomponents-core": "~7.1.0",
+    "igniteui-webcomponents-gauges": "~7.1.0",
+    "igniteui-webcomponents-grids": "~7.2.1",
+    "igniteui-webcomponents-inputs": "~7.1.0",
+    "igniteui-webcomponents-layouts": "~7.1.0",
+    "lit": "^3.3.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@vitest/browser-playwright": "^4.1.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-lit": "^2.2.1",
+    "globals": "^17.4.0",
+    "igniteui-cli": "~15.6.1",
+    "playwright": "^1.58.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.0",
+    "vite": "^7.0.0",
+    "vite-plugin-pwa": "^1.2.0",
+    "vite-plugin-static-copy": "^4.0.1",
+    "vitest": "^4.1.0"
+  }
+}

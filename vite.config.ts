@@ -1,0 +1,61 @@
+/// <reference types="vitest/config" />
+import { playwright } from '@vitest/browser-playwright'
+import { defineConfig } from 'vite'
+import { VitePWA } from 'vite-plugin-pwa';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
+
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: '[hash].js',
+        chunkFileNames: '[hash].js',
+        assetFileNames: '[hash][extname]',
+      },
+      onwarn: (warning: any, warn: any) => {
+        if (warning.code === 'THIS_IS_UNDEFINED') return;
+        warn(warning);
+      },
+    },
+    target: 'es2021',
+    minify: 'terser',
+    chunkSizeWarningLimit: 10 * 1024 * 1024 // 10 MB
+  },
+  test: {
+    browser: {
+      enabled: true,
+      provider: playwright(),
+      instances: [{ browser: 'chromium' }]
+    }
+  },
+  plugins: [
+    /** Copy static assets */
+    viteStaticCopy({
+      targets: [
+        { src: 'src/assets', dest: '.' }
+      ],
+      silent: true,
+    }),
+    /** PWA Plugin for service worker generation */
+    VitePWA({
+      registerType: 'autoUpdate',
+      strategies: 'generateSW',
+      workbox: {
+        globDirectory: 'dist',
+        globPatterns: ['**/*.{html,js,css,webmanifest}'],
+        globIgnores: ['polyfills/*.js', 'nomodule-*.js'],
+        navigateFallback: '/index.html',
+        runtimeCaching: [
+          {
+            urlPattern: /^polyfills\/.*\.js$/,
+            handler: 'CacheFirst',
+          },
+        ],
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024 // 10 MB
+      },
+      manifest: {
+        theme_color: "#ffffff"
+      }
+    }),
+  ],
+});

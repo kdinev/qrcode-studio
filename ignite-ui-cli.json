@@ -1,0 +1,17 @@
+{
+    "version": "15.6.1",
+    "project": {
+        "defaultPort": 8000,
+        "framework": "webcomponents",
+        "projectTemplate": "empty",
+        "projectType": "igc-ts",
+        "theme": "default",
+        "isBundle": false,
+        "components": [],
+        "sourceFiles": [],
+        "isShowcase": false,
+        "version": ""
+    },
+    "build": {},
+    "packagesInstalled": true
+}
