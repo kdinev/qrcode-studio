@@ -12,6 +12,7 @@ export default class App extends LitElement {
     }
 
     router-outlet {
+      display: block;
       width: 100%;
     }
 
