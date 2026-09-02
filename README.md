@@ -10,6 +10,19 @@ Run `ig start` to build the application, start a web server and open the applica
 
 Run `ig build` to build the application into an output directory.
 
+## Deployment
+
+The app is deployed to GitHub Pages by `.github/workflows/github-pages.yml` on every push to `master`, and is served from https://kdinev.github.io/qrcode-studio/.
+
+Project sites live under a sub-path, so the workflow builds with `BASE_PATH=/<repo>/`. That value drives the Vite asset URLs, the PWA manifest scope, and the `<base href>` that `@vaadin/router` derives its `baseUrl` from. To reproduce a deployment build locally:
+
+```sh
+BASE_PATH=/qrcode-studio/ npm run build
+BASE_PATH=/qrcode-studio/ npx vite preview
+```
+
+Leaving `BASE_PATH` unset builds for the site root, which is what `npm start` and `npm run build` do by default.
+
 ## Step by step mode
 
 If you want to get a guided experience through the available options, you can initialize the step by step mode that will help you to create and setup your new application, as well as update project previously created with the Ignite UI CLI. To start the guide, simply run the `ig` command.
