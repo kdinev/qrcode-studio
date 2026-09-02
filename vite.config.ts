@@ -1,10 +1,28 @@
 /// <reference types="vitest/config" />
 import { playwright } from '@vitest/browser-playwright'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
+/**
+ * Sub-path deployments (GitHub Pages project sites) set BASE_PATH, e.g. '/qrcode-studio/'.
+ * Dev and root deployments leave it unset.
+ */
+const base = process.env.BASE_PATH || '/';
+
+/** Keeps <base href> in sync with the build base - @vaadin/router derives its baseUrl from it. */
+function syncBaseHref(): Plugin {
+  return {
+    name: 'sync-base-href',
+    transformIndexHtml: {
+      order: 'post',
+      handler: (html: string) => html.replace(/<base href="[^"]*">/, `<base href="${base}">`),
+    },
+  };
+}
+
 export default defineConfig({
+  base,
   build: {
     rollupOptions: {
       output: {
@@ -29,6 +47,7 @@ export default defineConfig({
     }
   },
   plugins: [
+    syncBaseHref(),
     /** Copy static assets */
     viteStaticCopy({
       targets: [
@@ -44,7 +63,8 @@ export default defineConfig({
         globDirectory: 'dist',
         globPatterns: ['**/*.{html,js,css,webmanifest}'],
         globIgnores: ['polyfills/*.js', 'nomodule-*.js'],
-        navigateFallback: '/index.html',
+        // Relative so it resolves against the service worker scope under any base.
+        navigateFallback: 'index.html',
         runtimeCaching: [
           {
             urlPattern: /^polyfills\/.*\.js$/,
