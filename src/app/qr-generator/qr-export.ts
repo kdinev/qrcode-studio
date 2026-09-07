@@ -122,21 +122,23 @@ export function downloadBlob(blob: Blob, fileName: string): void {
  * Prints the QR code from an off-screen iframe, which keeps the surrounding
  * application out of the printed page without opening a blocked popup.
  *
- * Resolves once the print dialog has been dismissed.
+ * Resolves once the print dialog has been triggered. The iframe is removed
+ * afterwards on `afterprint`, or after a fallback delay - `afterprint` is not
+ * reliably fired by every browser, and waiting on it here would leave the
+ * caller unable to print again if it never arrives.
  */
 export function printQrCode(markup: string, caption = ''): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const frame = document.createElement('iframe');
-    let finished = false;
+    let cleaned = false;
 
     const cleanup = () => {
-      if (finished) {
+      if (cleaned) {
         return;
       }
 
-      finished = true;
+      cleaned = true;
       frame.remove();
-      resolve();
     };
 
     frame.title = 'QR code print preview';
@@ -151,6 +153,7 @@ export function printQrCode(markup: string, caption = ''): Promise<void> {
 
         if (!view) {
           cleanup();
+          reject(new Error('The print preview could not be created.'));
           return;
         }
 
@@ -158,6 +161,7 @@ export function printQrCode(markup: string, caption = ''): Promise<void> {
         view.focus();
         view.print();
         setTimeout(cleanup, PRINT_CLEANUP_DELAY);
+        resolve();
       },
       { once: true }
     );
