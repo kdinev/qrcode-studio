@@ -21,14 +21,7 @@ import {
   IgcTooltipComponent,
 } from 'igniteui-webcomponents';
 import { APP_ICONS, registerAppIcons } from './icons.js';
-import {
-  downloadBlob,
-  printQrCode,
-  qrFileName,
-  serializeQrCode,
-  svgToBlob,
-  svgToPngBlob,
-} from './qr-export.js';
+import { printQrCode, qrFileName } from './qr-export.js';
 import { defaultQrOptions, qrColorProperties, type QrOptions } from './qr-options.js';
 import './qr-options-panel.js';
 
@@ -54,7 +47,7 @@ registerAppIcons();
 /** Data URIs are inlined into the exported SVG, so keep the logo small. */
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 
-/** Multipliers offered for the PNG export, relative to the rendered size. */
+/** Multipliers offered for the PNG export, passed to `toImage()` as `scale`. */
 const PNG_SCALES = [1, 2, 4] as const;
 
 type PngScale = (typeof PNG_SCALES)[number];
@@ -553,31 +546,47 @@ export class QrGenerator extends LitElement {
   };
 
   private _downloadPng = async (): Promise<void> => {
-    await this._withExport(async (markup) => {
-      const size = this._options.size * this._pngScale;
-      const blob = await svgToPngBlob(markup, size);
+    await this._withExport(async (qrCode) => {
+      await qrCode.toImage({
+        fileName: qrFileName(this._encodedValue),
+        format: 'png',
+        scale: this._pngScale,
+        download: true,
+      });
 
-      downloadBlob(blob, qrFileName(this._encodedValue, 'png'));
+      const size = this._options.size * this._pngScale;
       this._notify(`Downloaded a ${size} x ${size} px PNG.`);
     });
   };
 
   private _downloadSvg = async (): Promise<void> => {
-    await this._withExport(async (markup) => {
-      downloadBlob(svgToBlob(markup), qrFileName(this._encodedValue, 'svg'));
+    await this._withExport(async (qrCode) => {
+      await qrCode.toImage({
+        fileName: qrFileName(this._encodedValue),
+        format: 'svg',
+        download: true,
+      });
+
       this._notify('Downloaded the QR code as SVG.');
     });
   };
 
   private _print = async (): Promise<void> => {
-    await this._withExport((markup) => printQrCode(markup, this._encodedValue));
+    await this._withExport(async (qrCode) => {
+      // `toBlob()` resolves the theme colors and inlines the logo, so the
+      // printed document stands on its own.
+      const markup = await (await qrCode.toBlob()).text();
+
+      await printQrCode(markup, this._encodedValue);
+    });
   };
 
   /**
-   * Serializes the current QR code and hands the markup to `task`, keeping the
-   * action buttons disabled and surfacing any failure as a toast.
+   * Hands the rendered QR code to `task`, keeping the action buttons disabled
+   * and surfacing any failure as a toast. The export methods of `igc-qr-code`
+   * await a pending render and logo load themselves.
    */
-  private async _withExport(task: (markup: string) => Promise<void>): Promise<void> {
+  private async _withExport(task: (qrCode: IgcQrCodeComponent) => Promise<void>): Promise<void> {
     if (!this._hasQrCode || this._exporting) {
       return;
     }
@@ -586,13 +595,12 @@ export class QrGenerator extends LitElement {
 
     try {
       await this.updateComplete;
-      await this._qrCode?.updateComplete;
 
       if (!this._qrCode) {
         throw new Error('The QR code is not available.');
       }
 
-      await task(serializeQrCode(this._qrCode, this._options.size));
+      await task(this._qrCode);
     } catch (error) {
       this._notify(error instanceof Error ? error.message : 'The export failed.');
     } finally {
