@@ -37,7 +37,7 @@ export default defineConfig({
     },
     target: 'es2021',
     minify: 'terser',
-    chunkSizeWarningLimit: 10 * 1024 * 1024 // 10 MB
+    chunkSizeWarningLimit: 1 * 1024 * 1024 // 1 MB
   },
   test: {
     browser: {

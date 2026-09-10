@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { IgcInputComponent, IgcQrCodeComponent } from 'igniteui-webcomponents';
+import type {
+  IgcInputComponent,
+  IgcQrCodeComponent,
+  QrCodeExportOptions,
+} from 'igniteui-webcomponents';
 import { normalizeUrl, QrGenerator } from './qr-generator.js';
 import { defaultQrOptions, type QrOptions } from './qr-options.js';
 import type { QrOptionsPanel } from './qr-options-panel.js';
@@ -39,6 +43,29 @@ async function generate(host: QrGenerator, url: string): Promise<void> {
   await host.updateComplete;
 
   query<HTMLElement>(host, 'igc-button[type="submit"]').click();
+  await host.updateComplete;
+}
+
+/**
+ * Replaces `toImage` on the rendered QR code and records the options it gets,
+ * so the export assertions neither rasterize nor open a download dialog.
+ */
+function captureExports(host: QrGenerator): QrCodeExportOptions[] {
+  const qrCode = query<IgcQrCodeComponent>(host, 'igc-qr-code');
+  const calls: QrCodeExportOptions[] = [];
+
+  qrCode.toImage = async (options?: QrCodeExportOptions) => {
+    calls.push(options ?? {});
+    return new File([], 'stub');
+  };
+
+  return calls;
+}
+
+/** Clicks an export button and lets the async handler settle. */
+async function clickExport(host: QrGenerator, index: number): Promise<void> {
+  exportButtons(host)[index].click();
+  await new Promise((resolve) => setTimeout(resolve));
   await host.updateComplete;
 }
 
@@ -178,6 +205,65 @@ describe('QrGenerator', () => {
     const qrCode = query<IgcQrCodeComponent>(host, 'igc-qr-code');
 
     expect(qrCode.style.getPropertyValue('--ig-qr-code-corner-square-color')).toBe('');
+  });
+
+  it('downloads a PNG through the component API at the selected scale', async () => {
+    const host = await renderGenerator();
+    await generate(host, 'https://www.example.com/products');
+    await changeOptions(host, { size: 320 });
+
+    const calls = captureExports(host);
+    await clickExport(host, 0);
+
+    expect(calls).toEqual([
+      { fileName: 'qr-example-com', format: 'png', scale: 2, download: true },
+    ]);
+    expect(query<HTMLElement>(host, 'igc-toast').textContent?.trim()).toBe(
+      'Downloaded a 640 x 640 px PNG.'
+    );
+  });
+
+  it('downloads an SVG through the component API', async () => {
+    const host = await renderGenerator();
+    await generate(host, 'https://example.com');
+
+    const calls = captureExports(host);
+    await clickExport(host, 1);
+
+    expect(calls).toEqual([{ fileName: 'qr-example-com', format: 'svg', download: true }]);
+  });
+
+  it('resolves the configured colors in a real export', async () => {
+    const host = await renderGenerator();
+    await generate(host, 'https://example.com');
+    await changeOptions(host, { darkColor: '#0d47a1', background: '#ffffff' });
+
+    const blob = await query<IgcQrCodeComponent>(host, 'igc-qr-code').toBlob();
+    const markup = await blob.text();
+
+    // The app styles the code through CSS custom properties, which do not
+    // survive serialization - the export has to resolve them to plain fills.
+    expect(blob.type).toContain('image/svg+xml');
+    expect(markup).toContain('fill="rgb(13, 71, 161)"');
+    expect(markup).toContain('fill="rgb(255, 255, 255)"');
+  });
+
+  it('surfaces an export failure as a toast and re-enables the actions', async () => {
+    const host = await renderGenerator();
+    await generate(host, 'https://example.com');
+
+    query<IgcQrCodeComponent>(host, 'igc-qr-code').toImage = () =>
+      Promise.reject(new RangeError('The export scale must be a positive finite number.'));
+
+    await clickExport(host, 0);
+
+    expect(query<HTMLElement>(host, 'igc-toast').textContent?.trim()).toBe(
+      'The export scale must be a positive finite number.'
+    );
+
+    for (const button of exportButtons(host)) {
+      expect(button.hasAttribute('disabled')).toBe(false);
+    }
   });
 
   it('reports the export resolution for the selected scale', async () => {
