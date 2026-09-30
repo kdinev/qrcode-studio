@@ -21,7 +21,12 @@ import {
   IgcTooltipComponent,
 } from 'igniteui-webcomponents';
 import { APP_ICONS, registerAppIcons } from './icons.js';
-import { printQrCode, qrFileName } from './qr-export.js';
+import {
+  downloadFile,
+  ensureLogoCompatibility,
+  printQrCode,
+  qrFileName,
+} from './qr-export.js';
 import { defaultQrOptions, qrColorProperties, type QrOptions } from './qr-options.js';
 import './qr-options-panel.js';
 
@@ -256,6 +261,13 @@ export class QrGenerator extends LitElement {
   @state() private _logoSrc = '';
 
   @state() private _logoName = '';
+
+  /**
+   * Resolves once the logo picked last has been read. Reading a file is
+   * asynchronous, so without it an export started right after the upload would
+   * snapshot a QR code that has no logo yet.
+   */
+  private _logoRead: Promise<void> = Promise.resolve();
 
   /** Bumped to recreate `igc-file-input`, whose `value` is read-only. */
   @state() private _logoRevision = 0;
@@ -511,7 +523,7 @@ export class QrGenerator extends LitElement {
     }
   };
 
-  private _handleLogoChange = async (event: CustomEvent<FileList>): Promise<void> => {
+  private _handleLogoChange = (event: CustomEvent<FileList>): void => {
     const file = event.detail.item(0);
 
     if (!file) {
@@ -530,6 +542,10 @@ export class QrGenerator extends LitElement {
       return;
     }
 
+    this._logoRead = this._readLogo(file);
+  };
+
+  private async _readLogo(file: File): Promise<void> {
     try {
       this._logoSrc = await readAsDataUrl(file);
       this._logoName = file.name;
@@ -537,7 +553,7 @@ export class QrGenerator extends LitElement {
       this._notify('The logo could not be read.');
       this._removeLogo();
     }
-  };
+  }
 
   private _removeLogo = (): void => {
     this._logoSrc = '';
@@ -561,12 +577,15 @@ export class QrGenerator extends LitElement {
 
   private _downloadSvg = async (): Promise<void> => {
     await this._withExport(async (qrCode) => {
-      await qrCode.toImage({
+      // Downloaded by hand rather than with `download: true`, because the
+      // markup needs the logo compatibility pass before it reaches the disk.
+      const exported = await qrCode.toImage({
         fileName: qrFileName(this._encodedValue),
         format: 'svg',
-        download: true,
       });
+      const markup = ensureLogoCompatibility(await exported.text());
 
+      downloadFile(new File([markup], exported.name, { type: exported.type }));
       this._notify('Downloaded the QR code as SVG.');
     });
   };
@@ -577,7 +596,7 @@ export class QrGenerator extends LitElement {
       // printed document stands on its own.
       const markup = await (await qrCode.toBlob()).text();
 
-      await printQrCode(markup, this._encodedValue);
+      await printQrCode(ensureLogoCompatibility(markup), this._encodedValue);
     });
   };
 
@@ -594,6 +613,7 @@ export class QrGenerator extends LitElement {
     this._exporting = true;
 
     try {
+      await this._logoRead;
       await this.updateComplete;
 
       if (!this._qrCode) {
@@ -610,7 +630,13 @@ export class QrGenerator extends LitElement {
 
   private _notify(message: string): void {
     this._toastMessage = message;
-    void this.updateComplete.then(() => this._toast?.show());
+    void this.updateComplete.then(() => {
+      // Exporting is asynchronous, so the view can be routed away before the
+      // toast lands. Showing a disconnected popover throws.
+      if (this.isConnected) {
+        this._toast?.show();
+      }
+    });
   }
 }
 
