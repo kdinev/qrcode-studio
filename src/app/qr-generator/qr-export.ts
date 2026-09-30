@@ -1,5 +1,60 @@
+const XLINK_NAMESPACE = 'http://www.w3.org/1999/xlink';
+
 /** Fallback for browsers that never fire `afterprint`, in milliseconds. */
 const PRINT_CLEANUP_DELAY = 60_000;
+
+/**
+ * Adds the SVG 1.1 `xlink:href` alias beside the SVG 2 `href` of the embedded
+ * logo, leaving everything else untouched.
+ *
+ * `igc-qr-code` writes the logo as `<image href="data:...">`. Browsers resolve
+ * that, so the export looks right in a browser, but SVG 1.1 consumers -
+ * Illustrator, the Office import, Batik, older librsvg - read only
+ * `xlink:href` and drop the logo, which leaves a blank hole in the middle of
+ * an otherwise correct QR code. Writing both keeps either kind of consumer
+ * happy; SVG 2 gives `href` priority when the two are present.
+ *
+ * Drop this once the component emits both attributes itself.
+ */
+export function ensureLogoCompatibility(markup: string): string {
+  const parsed = new DOMParser().parseFromString(markup, 'image/svg+xml');
+
+  if (parsed.querySelector('parsererror')) {
+    return markup;
+  }
+
+  const images = [...parsed.querySelectorAll('image')].filter((image) =>
+    image.hasAttribute('href')
+  );
+
+  if (images.length === 0) {
+    return markup;
+  }
+
+  for (const image of images) {
+    image.setAttributeNS(XLINK_NAMESPACE, 'xlink:href', image.getAttribute('href') as string);
+  }
+
+  return new XMLSerializer().serializeToString(parsed.documentElement);
+}
+
+/** Saves a file to the user's downloads through a transient anchor. */
+export function downloadFile(file: File): void {
+  const url = URL.createObjectURL(file);
+  const anchor = document.createElement('a');
+
+  anchor.href = url;
+  anchor.download = file.name;
+  anchor.rel = 'noopener';
+  anchor.hidden = true;
+
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+
+  // Revoking in the same task cancels the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
 /**
  * Prints the QR code from an off-screen iframe, which keeps the surrounding

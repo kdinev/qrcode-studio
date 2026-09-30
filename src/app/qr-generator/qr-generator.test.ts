@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
+  IgcFileInputComponent,
   IgcInputComponent,
   IgcQrCodeComponent,
   QrCodeExportOptions,
@@ -56,10 +57,60 @@ function captureExports(host: QrGenerator): QrCodeExportOptions[] {
 
   qrCode.toImage = async (options?: QrCodeExportOptions) => {
     calls.push(options ?? {});
-    return new File([], 'stub');
+    return new File(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], 'stub.svg', {
+      type: 'image/svg+xml',
+    });
   };
 
   return calls;
+}
+
+const XLINK_NAMESPACE = 'http://www.w3.org/1999/xlink';
+
+/** A logo the way an uploaded `.svg` file arrives from the file input. */
+function logoFile(): File {
+  return new File(
+    ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#e91e63"/></svg>'],
+    'logo.svg',
+    { type: 'image/svg+xml' }
+  );
+}
+
+/** Picks a logo the way the file input does. Deliberately not awaited here. */
+function uploadLogo(host: QrGenerator, file: File): void {
+  const transfer = new DataTransfer();
+
+  transfer.items.add(file);
+  query<IgcFileInputComponent>(host, 'igc-file-input').emitEvent('igcChange', {
+    detail: transfer.files,
+  });
+}
+
+/** Clicks an export button and returns the text of the file it hands over. */
+async function captureDownload(host: QrGenerator, index: number): Promise<string> {
+  const create = URL.createObjectURL;
+  const captured: Blob[] = [];
+
+  URL.createObjectURL = (object: Blob | MediaSource) => {
+    captured.push(object as Blob);
+    return create.call(URL, object);
+  };
+
+  try {
+    exportButtons(host)[index].click();
+
+    // The chain crosses a FileReader and a snapshot, so poll rather than
+    // guessing at a fixed delay.
+    for (let attempt = 0; attempt < 200 && captured.length === 0; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    await host.updateComplete;
+
+    return captured.length > 0 ? await captured[0].text() : '';
+  } finally {
+    URL.createObjectURL = create;
+  }
 }
 
 /** Clicks an export button and lets the async handler settle. */
@@ -230,7 +281,38 @@ describe('QrGenerator', () => {
     const calls = captureExports(host);
     await clickExport(host, 1);
 
-    expect(calls).toEqual([{ fileName: 'qr-example-com', format: 'svg', download: true }]);
+    // No `download: true` - the app saves the file itself, after adding the
+    // SVG 1.1 logo alias that the component does not write.
+    expect(calls).toEqual([{ fileName: 'qr-example-com', format: 'svg' }]);
+  });
+
+  it('gives the exported logo an xlink:href alias for SVG 1.1 consumers', async () => {
+    const host = await renderGenerator();
+    await generate(host, 'https://example.com');
+    uploadLogo(host, logoFile());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await host.updateComplete;
+
+    const downloaded = await captureDownload(host, 1);
+    const image = new DOMParser()
+      .parseFromString(downloaded, 'image/svg+xml')
+      .querySelector('image');
+
+    // Browsers read `href`; Illustrator, Office and Batik read `xlink:href`.
+    // Without the alias the logo silently vanishes from the exported file.
+    expect(image?.getAttribute('href')).toContain('data:image/svg+xml');
+    expect(image?.getAttributeNS(XLINK_NAMESPACE, 'href')).toBe(image?.getAttribute('href'));
+  });
+
+  it('waits for a logo that is still being read before exporting', async () => {
+    const host = await renderGenerator();
+    await generate(host, 'https://example.com');
+
+    // Export straight after picking the file, while the read is still pending.
+    uploadLogo(host, logoFile());
+    const downloaded = await captureDownload(host, 1);
+
+    expect(downloaded).toContain('<image');
   });
 
   it('resolves the configured colors in a real export', async () => {
