@@ -65,8 +65,6 @@ function captureExports(host: QrGenerator): QrCodeExportOptions[] {
   return calls;
 }
 
-const XLINK_NAMESPACE = 'http://www.w3.org/1999/xlink';
-
 /** A logo the way an uploaded `.svg` file arrives from the file input. */
 function logoFile(): File {
   return new File(
@@ -286,7 +284,7 @@ describe('QrGenerator', () => {
     expect(calls).toEqual([{ fileName: 'qr-example-com', format: 'svg' }]);
   });
 
-  it('gives the exported logo an xlink:href alias for SVG 1.1 consumers', async () => {
+  it('inlines an uploaded SVG logo in the downloaded SVG', async () => {
     const host = await renderGenerator();
     await generate(host, 'https://example.com');
     uploadLogo(host, logoFile());
@@ -294,14 +292,39 @@ describe('QrGenerator', () => {
     await host.updateComplete;
 
     const downloaded = await captureDownload(host, 1);
-    const image = new DOMParser()
-      .parseFromString(downloaded, 'image/svg+xml')
-      .querySelector('image');
+    const exported = new DOMParser().parseFromString(downloaded, 'image/svg+xml');
 
-    // Browsers read `href`; Illustrator, Office and Batik read `xlink:href`.
-    // Without the alias the logo silently vanishes from the exported file.
-    expect(image?.getAttribute('href')).toContain('data:image/svg+xml');
-    expect(image?.getAttributeNS(XLINK_NAMESPACE, 'href')).toBe(image?.getAttribute('href'));
+    // Illustrator, Office and Batik accept only raster data in an image, so
+    // the logo has to be part of the document rather than embedded in it.
+    expect(exported.querySelector('image')).toBeNull();
+    expect(exported.querySelector('svg > svg circle')?.getAttribute('fill')).toBe('#e91e63');
+  });
+
+  it('draws the inlined logo where the image was', async () => {
+    const host = await renderGenerator();
+    await generate(host, 'https://example.com');
+    uploadLogo(host, logoFile());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await host.updateComplete;
+
+    const downloaded = await captureDownload(host, 1);
+    const url = URL.createObjectURL(new Blob([downloaded], { type: 'image/svg+xml' }));
+    const image = new Image();
+
+    try {
+      image.src = url;
+      await image.decode();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d') as CanvasRenderingContext2D;
+
+    canvas.width = canvas.height = 256;
+    context.drawImage(image, 0, 0, 256, 256);
+
+    expect([...context.getImageData(128, 128, 1, 1).data]).toEqual([233, 30, 99, 255]);
   });
 
   it('waits for a logo that is still being read before exporting', async () => {
@@ -312,7 +335,7 @@ describe('QrGenerator', () => {
     uploadLogo(host, logoFile());
     const downloaded = await captureDownload(host, 1);
 
-    expect(downloaded).toContain('<image');
+    expect(downloaded).toContain('<circle');
   });
 
   it('resolves the configured colors in a real export', async () => {
